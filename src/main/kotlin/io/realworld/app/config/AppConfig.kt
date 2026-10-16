@@ -1,5 +1,7 @@
 package io.realworld.app.config
 
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.util.StdDateFormat
 import io.ktor.application.Application
 import io.ktor.application.call
 import io.ktor.application.install
@@ -12,6 +14,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.jackson.jackson
 import io.ktor.response.respond
 import io.ktor.routing.Routing
+import io.ktor.routing.route
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.ApplicationEngine
 import io.ktor.server.engine.ApplicationEngineFactory
@@ -20,6 +23,7 @@ import io.ktor.server.engine.EngineAPI
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.util.KtorExperimentalAPI
+import io.realworld.app.domain.exceptions.ForbiddenException
 import io.realworld.app.domain.exceptions.NotFoundException
 import io.realworld.app.domain.exceptions.UnauthorizedException
 import io.realworld.app.utils.JwtProvider
@@ -34,25 +38,27 @@ import io.realworld.app.web.profiles
 import io.realworld.app.web.tags
 import io.realworld.app.web.users
 import org.kodein.di.generic.instance
+import java.util.UUID
 
 const val SERVER_PORT = 8080
 
 @KtorExperimentalAPI
 @EngineAPI
-fun setup(isCio: Boolean = true): BaseApplicationEngine {
-    DbConfig.setup("jdbc:h2:mem:DATABASE_TO_UPPER=false;", "sa", "")
-    return server(if (isCio) CIO else Netty)
+fun setup(isCio: Boolean = true, port: Int = SERVER_PORT): BaseApplicationEngine {
+    DbConfig.setup("jdbc:h2:mem:${UUID.randomUUID()};DATABASE_TO_UPPER=false", "sa", "")
+    return server(if (isCio) CIO else Netty, port)
 }
 
 @KtorExperimentalAPI
 @EngineAPI
 fun server(
     engine: ApplicationEngineFactory<BaseApplicationEngine,
-        out ApplicationEngine.Configuration>
+        out ApplicationEngine.Configuration>,
+    port: Int = SERVER_PORT
 ): BaseApplicationEngine {
     return embeddedServer(
         engine,
-        port = SERVER_PORT,
+        port = port,
         watchPaths = listOf("mainModule"),
         module = Application::mainModule
     )
@@ -69,6 +75,8 @@ fun Application.mainModule() {
     install(CallLogging)
     install(ContentNegotiation) {
         jackson {
+            disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            dateFormat = StdDateFormat().withColonInTimeZone(true)
         }
     }
     install(Authentication) {
@@ -89,6 +97,9 @@ fun Application.mainModule() {
         exception<UnauthorizedException> { e ->
             call.respond(HttpStatusCode.Unauthorized, ErrorResponse(mapOf("body" to listOf(e.message))))
         }
+        exception<ForbiddenException> { e ->
+            call.respond(HttpStatusCode.Forbidden, ErrorResponse(mapOf("body" to listOf(e.message))))
+        }
         exception<NotFoundException> { e ->
             call.respond(HttpStatusCode.NotFound, ErrorResponse(mapOf("body" to listOf(e.message))))
         }
@@ -98,9 +109,11 @@ fun Application.mainModule() {
     }
 
     install(Routing) {
-        users(userController)
-        profiles(profileController)
-        articles(articleController, commentController)
-        tags(tagController)
+        route("api") {
+            users(userController)
+            profiles(profileController)
+            articles(articleController, commentController)
+            tags(tagController)
+        }
     }
 }

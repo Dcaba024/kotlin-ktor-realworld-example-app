@@ -4,9 +4,7 @@ import io.realworld.app.domain.User
 import io.realworld.app.domain.exceptions.NotFoundException
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.Column
-import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.ResultRow
-import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
@@ -43,16 +41,17 @@ internal object Follows : Table() {
 }
 
 class UserRepository {
-    init {
-        transaction {
-            SchemaUtils.create(Users)
-            SchemaUtils.create(Follows)
-        }
-    }
-
     fun findByEmail(email: String): User? {
         return transaction {
             Users.select { Users.email eq email }
+                .map { Users.toDomain(it) }
+                .firstOrNull()
+        }
+    }
+
+    fun findById(id: Long): User? {
+        return transaction {
+            Users.select { Users.id eq id }
                 .map { Users.toDomain(it) }
                 .firstOrNull()
         }
@@ -100,24 +99,23 @@ class UserRepository {
     }
 
     fun findIsFollowUser(email: String, userIdToFollow: Long): Boolean {
+        val follower = findByEmail(email) ?: return false
         return transaction {
-            Users.join(Follows, JoinType.INNER,
-                additionalConstraint = {
-                    Follows.user eq Users.id and (Follows.follower eq userIdToFollow)
-                })
-                .select {
-                    Users.email eq email
-                }
-                .count() > 0
+            Follows.select {
+                Follows.user eq userIdToFollow and (Follows.follower eq follower.id!!)
+            }.count() > 0
         }
     }
 
     fun follow(email: String, usernameToFollow: String): User {
         val user = findByEmail(email) ?: throw NotFoundException("Email not found to follow")
         val userToFollow = findByUsername(usernameToFollow) ?: throw NotFoundException("Username not found to follow")
+        if (findIsFollowUser(email, userToFollow.id!!)) {
+            return userToFollow
+        }
         transaction {
             Follows.insert { row ->
-                row[Follows.user] = userToFollow.id!!
+                row[Follows.user] = userToFollow.id
                 row[follower] = user.id!!
             }
         }
@@ -130,7 +128,7 @@ class UserRepository {
             ?: throw NotFoundException("Username not found to unfollow")
         transaction {
             Follows.deleteWhere {
-                Follows.user eq user.id!! and (Follows.follower eq userToUnfollow.id!!)
+                Follows.user eq userToUnfollow.id!! and (Follows.follower eq user.id!!)
             }
         }
         return userToUnfollow

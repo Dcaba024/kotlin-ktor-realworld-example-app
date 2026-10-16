@@ -34,15 +34,19 @@ class UserService(private val jwtProvider: JwtProvider, private val userReposito
         return user.copy(token = generateJwtToken(user))
     }
 
-    fun getProfileByUsername(email: String, usernameFollowing: String): Profile {
+    fun getProfileByUsername(email: String?, usernameFollowing: String): Profile {
         return userRepository.findByUsername(usernameFollowing).let { user ->
             user ?: throw NotFoundException("User not found to find.")
-            Profile(user.username, user.bio, user.image, userRepository.findIsFollowUser(email, user.id!!))
+            val following = email != null && userRepository.findIsFollowUser(email, user.id!!)
+            Profile(user.username, user.bio, user.image, following)
         }
     }
 
     fun update(email: String, user: User): User? {
-        return userRepository.update(email, user)
+        val password = user.password?.let { String(base64Encoder.encode(Cipher.encrypt(it))) }
+        return userRepository.update(email, user.copy(password = password))?.let { updated ->
+            updated.copy(token = generateJwtToken(updated))
+        }
     }
 
     private fun generateJwtToken(user: User): String? {
