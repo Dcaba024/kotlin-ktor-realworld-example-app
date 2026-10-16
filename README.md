@@ -53,9 +53,9 @@ Tests:
 
 # Getting started
 
-You need just JVM installed.
+You need JDK 21 installed. The Gradle wrapper downloads Gradle 8.10.2 and the Kotlin toolchain itself.
 
-The server is configured to start on [8080](http://localhost:7000).
+The server is configured to start on [8080](http://localhost:8080).
 
 Build:
 > ./gradlew clean build
@@ -65,7 +65,7 @@ Start the server:
 
 In the project have the [spec-api](https://github.com/Rudge/kotlin-ktor-realworld-example-app/tree/master/spec-api) with the README and collections to execute backend tests specs [realworld](https://github.com/gothinkster/realworld).
 
-Execute tests and start the server:
+Execute tests and start the server (requires Node.js for `npx newman`):
 
 > ./gradlew run & APIURL=http://localhost:8080 ./spec-api/run-api-tests.sh
 
